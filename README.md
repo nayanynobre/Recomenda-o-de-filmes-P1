@@ -1,70 +1,76 @@
 # ReelAI
 
-ReelAI é um aplicativo móvel para descobrir filmes e séries com menos busca e mais contexto. A plataforma combina recomendações personalizadas por Inteligência Artificial, catálogo atualizado do TMDB e dados de disponibilidade em serviços de streaming para ajudar o usuário a encontrar o que assistir.
+Aplicativo móvel/web para descobrir filmes e séries com recomendações personalizadas por IA, catálogo do TMDB e disponibilidade de streaming. Esta versão está preparada para a **P1: hospedagem pública, API em Node/Express e persistência em MongoDB Atlas**.
 
-## Funcionalidades
+## Arquitetura
 
-- **Recomendações via IA**: Chat integrado com o Google Gemini (modelo `gemini-2.5-flash`) que atua como um especialista em cinema, sugerindo títulos com base no gosto do usuário, humor ou pedidos específicos.
-- **Catálogo TMDB**: Integração com a API do TMDB para busca, populares, tendência, gêneros e detalhes de filmes.
-- **Disponibilidade de Streaming**: Uso de `movie/{id}/watch/providers` do TMDB para mostrar onde assistir no Brasil.
-- **Home com Seções**: Tela inicial com destaque e trilhas horizontais por categoria.
-- **Busca Inteligente**: Pesquisa otimizada (com _debounce_) para encontrar filmes rapidamente sem sobrecarregar a rede.
-- **Detalhes Completos**: Sinopse, elenco, ano de lançamento, gênero e links diretos para assistir.
+| Camada | Tecnologia | Responsabilidade |
+|---|---|---|
+| Aplicativo | Expo Router, React Native, Expo Web | Interface mobile e web publicada na Vercel |
+| API | Node.js, Express | Recomendações, busca TMDB, health check e conversas |
+| Banco | MongoDB Atlas via Mongoose | Persistência das conversas por usuário |
+| Autenticação | Clerk | Login e identificação do usuário no app |
+| Dados/IA | TMDB e Google Gemini | Catálogo e recomendações |
 
-## Tecnologias
+Quando `EXPO_PUBLIC_API_URL` é configurada, recomendações e histórico de conversa passam pela API hospedada. O armazenamento local continua como fallback para desenvolvimento offline.
 
-- **React Native** com **Expo** e **Expo Router**: Desenvolvimento mobile e roteamento.
-- **TypeScript**: Tipagem estática para maior segurança no código.
-- **Clerk**: Autenticação de usuários.
-- **Google Gemini API**: Motor de inteligência artificial para o chat.
-- **TMDB API**: Fonte principal de catálogo de filmes e provedores de streaming.
-- **AsyncStorage** e **SecureStore**: Persistência local e armazenamento seguro.
+## Desenvolvimento local
 
-## Como rodar
+```bash
+npm install
+cp .env.example .env
+npm run start:app
+```
 
-### Pré-requisitos
+Para executar a API localmente em outro terminal, configure `MONGODB_URI`, `TMDB_BEARER_TOKEN` e `GEMINI_API_KEY` no `.env` e execute:
 
-- Node.js instalado.
-- Token Bearer da API do TMDB.
-- Chave de API do Google Gemini.
-- Chave publicável do Clerk.
+```bash
+npm start
+```
 
-### Instalação
+A API ficará disponível em `http://localhost:3000` e seu teste de saúde é:
 
-1.  Clone o repositório:
+```bash
+curl http://localhost:3000/api/health
+```
 
-    ```bash
-    git clone https://github.com/deyvidperes/Recomenda-o-de-filmes
-    cd Reel-AI
-    ```
+## Deploy do backend no Render
 
-2.  Instale as dependências:
+1. Faça push deste projeto para um repositório GitHub seu.
+2. No Render, escolha **New > Web Service** e conecte o repositório.
+3. Use `npm install` como Build Command e `npm start` como Start Command.
+4. Adicione as variáveis `MONGODB_URI`, `TMDB_BEARER_TOKEN`, `GEMINI_API_KEY`, `CORS_ORIGIN` e `NODE_ENV=production`.
+5. Após o deploy, confirme `https://SEU-SERVICO.onrender.com/api/health`.
 
-    ```bash
-    npm install
-    ```
+O arquivo `render.yaml` já contém a configuração base. As chaves secretas devem ser preenchidas no painel do Render, nunca commitadas no Git.
 
-3.  Configure as variáveis de ambiente:
-    Crie um arquivo `.env` na raiz do projeto e adicione suas chaves:
+## Banco no MongoDB Atlas
 
-    ```env
-    EXPO_PUBLIC_TMDB_BEARER_TOKEN=seu_token_bearer_tmdb
-    EXPO_PUBLIC_GEMINI_API_KEY=sua_chave_gemini
-    EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=sua_chave_clerk
-    ```
+Crie um cluster gratuito, um usuário de banco e uma regra de rede para o serviço do Render. Copie a connection string para `MONGODB_URI`, substituindo usuário, senha e nome do banco. A API cria automaticamente a coleção `conversations` na primeira gravação.
 
-4.  Execute o projeto:
+## Deploy do frontend na Vercel
 
-    ```bash
-    npx expo start
-    ```
+1. Importe o mesmo repositório na Vercel.
+2. O `vercel.json` usa `npx expo export --platform web` e publica `dist`.
+3. Configure `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` e `EXPO_PUBLIC_API_URL` com a URL pública do Render.
+4. Publique e teste login, busca, recomendações e limpeza do histórico.
 
-    - Use o aplicativo **Expo Go** no seu celular para escanear o QR Code.
-    - Ou pressione `a` para rodar no emulador Android / `i` para simulador iOS.
+## Endpoints da API
 
-## Estrutura do projeto
+| Método | Endpoint | Uso |
+|---|---|---|
+| GET | `/api/health` | Verifica serviço e conexão com MongoDB |
+| GET | `/api/movies/search?query=...` | Pesquisa filmes/séries no TMDB |
+| POST | `/api/recommendations` | Gera recomendações com Gemini e enriquece com TMDB |
+| GET | `/api/conversations/:userId` | Carrega histórico persistido |
+| PUT | `/api/conversations/:userId` | Salva histórico persistido |
+| DELETE | `/api/conversations/:userId` | Remove histórico persistido |
 
-- `app/`: Rotas e telas do aplicativo (Expo Router).
-- `components/`: Componentes reutilizáveis de UI (Cards, Inputs, etc.).
-- `services/`: Integrações com APIs externas (`api.ts`, `gemini.ts`).
-- `scripts/`: Scripts utilitários para verificação e testes de API.
+## Segurança e checklist P1
+
+- `.env` e segredos estão no `.gitignore`.
+- Chaves do TMDB e Gemini podem ficar apenas no backend Render.
+- O frontend sincroniza conversas por `userId` do Clerk e mantém fallback local.
+- A API tem tratamento de erros, validação básica de payload e endpoint de health check.
+- O CORS pode ser restringido pela variável `CORS_ORIGIN`.
+- Antes da entrega, valide as URLs públicas, o status `database: connected`, persistência após recarregar e layout mobile/web.

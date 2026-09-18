@@ -22,6 +22,11 @@ import { useColor } from "@/hooks/useColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Movie } from "@/services/api";
 import {
+  clearRemoteConversation,
+  loadRemoteConversation,
+  saveRemoteConversation,
+} from "@/services/backend";
+import {
   getMovieRecommendations,
   GeminiRecommendationResult,
 } from "@/services/gemini";
@@ -139,13 +144,16 @@ export default function ChatScreen() {
 
     const hydrate = async () => {
       try {
-        const [cached, savedCtx] = await Promise.all([
+        const [cached, remoteMessages, savedCtx] = await Promise.all([
           AsyncStorage.getItem(storageKey),
+          loadRemoteConversation(userId),
           loadContext(userId),
         ]);
         if (!isMounted) return;
 
-        if (cached) {
+        if (remoteMessages && remoteMessages.length > 0) {
+          setMessages(remoteMessages);
+        } else if (cached) {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setMessages(parsed);
@@ -173,7 +181,8 @@ export default function ChatScreen() {
     if (!isLoaded || !storageKey || !hasHydratedCache) return;
     if (messages.length <= 1) return;
     AsyncStorage.setItem(storageKey, JSON.stringify(messages)).catch(() => {});
-  }, [isLoaded, storageKey, hasHydratedCache, messages]);
+    void saveRemoteConversation(userId, messages);
+  }, [isLoaded, storageKey, hasHydratedCache, messages, userId]);
 
   // ---- Persist context helper ----
   const persistCtx = useCallback(
@@ -193,6 +202,7 @@ export default function ChatScreen() {
     }
     if (userId) {
       await clearContext(userId);
+      await clearRemoteConversation(userId);
     }
 
     recCtxRef.current = createEmptyContext();
