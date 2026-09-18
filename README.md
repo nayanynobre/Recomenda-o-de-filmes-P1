@@ -34,7 +34,7 @@ ReelAI é um aplicativo móvel para descobrir filmes e séries com menos busca e
 1.  Clone o repositório:
 
     ```bash
-    git clone https://github.com/JoaoOliveiraskt/Reel-AI.git
+    git clone https://github.com/deyvidperes/Recomenda-o-de-filmes
     cd Reel-AI
     ```
 
