@@ -1,4 +1,4 @@
-Recomenda-o de Filmes
+Recomendação de Filmes
 Sistema web desenvolvido para recomendação de filmes, permitindo consultar e receber recomendações de títulos.
 
 Tecnologias
