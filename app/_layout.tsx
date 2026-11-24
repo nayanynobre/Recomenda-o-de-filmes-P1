@@ -28,7 +28,9 @@ function MissingConfigurationScreen() {
 }
 
 export default function RootLayout() {
-  const [isLoading, setIsLoading] = useState(true);
+  // A preferência de tema é restaurada em segundo plano. O navegador não
+  // deve ficar preso em uma tela vazia caso o storage demore ou falhe.
+  const [isLoading, setIsLoading] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
