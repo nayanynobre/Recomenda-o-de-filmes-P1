@@ -9,11 +9,22 @@ import 'react-native-reanimated';
 import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { StyleSheet, Text, View } from 'react-native';
 
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim();
 
-if (!publishableKey) {
-  throw new Error('Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env');
+function MissingConfigurationScreen() {
+  return (
+    <View style={styles.configurationScreen}>
+      <Text style={styles.configurationTitle}>ReelAI</Text>
+      <Text style={styles.configurationMessage}>
+        O aplicativo está publicado, mas a autenticação ainda não foi configurada.
+      </Text>
+      <Text style={styles.configurationHint}>
+        No Vercel, adicione a variável EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY e faça um novo deploy.
+      </Text>
+    </View>
+  );
 }
 
 export default function RootLayout() {
@@ -38,7 +49,11 @@ export default function RootLayout() {
   }, []);
 
   if (isLoading) {
-    return null; // ou um loading screen
+    return <View style={styles.loadingScreen} />;
+  }
+
+  if (!publishableKey) {
+    return <MissingConfigurationScreen />;
   }
 
   return (
@@ -86,3 +101,38 @@ export default function RootLayout() {
     </ClerkProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: '#0A0A0A',
+  },
+  configurationScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    backgroundColor: '#0A0A0A',
+  },
+  configurationTitle: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: '800',
+    marginBottom: 16,
+  },
+  configurationMessage: {
+    maxWidth: 520,
+    color: '#FFFFFF',
+    fontSize: 18,
+    lineHeight: 26,
+    textAlign: 'center',
+  },
+  configurationHint: {
+    maxWidth: 520,
+    color: '#A1A1AA',
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+});

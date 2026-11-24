@@ -181,7 +181,7 @@ export default function ChatScreen() {
     if (!isLoaded || !storageKey || !hasHydratedCache) return;
     if (messages.length <= 1) return;
     AsyncStorage.setItem(storageKey, JSON.stringify(messages)).catch(() => {});
-    void saveRemoteConversation(userId, messages);
+    if (userId) void saveRemoteConversation(userId, messages);
   }, [isLoaded, storageKey, hasHydratedCache, messages, userId]);
 
   // ---- Persist context helper ----
