@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const { GoogleGenAI, Type } = require('@google/genai');
+const { verifyToken } = require('@clerk/backend');
 
 const app = express();
 
@@ -18,6 +19,8 @@ const tmdbToken =
 const geminiKey =
   process.env.GEMINI_API_KEY ||
   process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+
+const clerkSecretKey = process.env.CLERK_SECRET_KEY;
 
 app.use(
   cors({
@@ -93,6 +96,35 @@ const Conversation =
   mongoose.models.Conversation ||
   mongoose.model('Conversation', conversationSchema);
 
+const profileSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true, unique: true, index: true },
+    role: { type: String, enum: ['viewer', 'curator'], default: 'viewer' },
+    displayName: { type: String, default: '' },
+    email: { type: String, default: '' },
+    lastSeenAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+const UserProfile =
+  mongoose.models.UserProfile ||
+  mongoose.model('UserProfile', profileSchema);
+
+const activitySchema = new mongoose.Schema(
+  {
+    actorId: { type: String, required: true, index: true },
+    type: { type: String, enum: ['recommendation', 'favorite'], required: true },
+    movieId: { type: String, required: true },
+    movieTitle: { type: String, required: true },
+    note: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+
+const Activity =
+  mongoose.models.Activity || mongoose.model('Activity', activitySchema);
+
 // ============================================================
 // CONEXÃO COM MONGODB
 // ============================================================
@@ -148,19 +180,45 @@ async function databaseMiddleware(req, res, next) {
 }
 
 app.use('/api', databaseMiddleware);
+app.use('/api/conversations', requireAuth);
+app.use('/api/profile', requireAuth);
+app.use('/api/activity', requireAuth);
+
+async function requireAuth(req, res, next) {
+  const authorization = req.header('authorization') || '';
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  if (!clerkSecretKey || !token) {
+    return res.status(401).json({ error: 'Sessão autenticada obrigatória.' });
+  }
+  try {
+    const claims = await verifyToken(token, { secretKey: clerkSecretKey });
+    req.auth = claims;
+    req.userId = String(claims.sub || '');
+    if (!req.userId) return res.status(401).json({ error: 'Token sem usuário.' });
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Sessão inválida ou expirada.' });
+  }
+}
 
 function requireUserId(req, res, next) {
-  const userId = req.header('x-user-id') || req.params.userId;
-
-  if (!userId || userId.length > 160) {
-    return res.status(400).json({
-      error: 'userId é obrigatório.',
-    });
+  const requested = req.header('x-user-id') || req.params.userId;
+  if (requested && requested !== req.userId) {
+    return res.status(403).json({ error: 'Você não pode acessar dados de outro usuário.' });
   }
-
-  req.userId = userId;
-
   next();
+}
+
+function requireRole(...roles) {
+  return async (req, res, next) => {
+    try {
+      const profile = await UserProfile.findOne({ userId: req.userId }).lean();
+      const role = profile?.role || 'viewer';
+      if (!roles.includes(role)) return res.status(403).json({ error: 'Permissão insuficiente.' });
+      req.profile = profile || { userId: req.userId, role };
+      next();
+    } catch (error) { next(error); }
+  };
 }
 
 // ============================================================
@@ -304,6 +362,39 @@ app.get('/api/health', (req, res) => {
 });
 
 // ============================================================
+// PERFIL, AUTORIZAÇÃO E INTERAÇÃO ENTRE USUÁRIOS
+// ============================================================
+
+app.get('/api/profile/me', requireAuth, async (req, res, next) => {
+  try {
+    const profile = await UserProfile.findOneAndUpdate(
+      { userId: req.userId },
+      { $setOnInsert: { userId: req.userId, role: 'viewer' }, $set: { lastSeenAt: new Date() } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
+    res.json({ profile });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/activity', requireAuth, async (req, res, next) => {
+  try {
+    const activities = await Activity.find().sort({ createdAt: -1 }).limit(50).lean();
+    res.json({ activities });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/activity', requireAuth, requireRole('viewer', 'curator'), async (req, res, next) => {
+  try {
+    const { type = 'favorite', movieId, movieTitle, note = '' } = req.body || {};
+    if (!movieId || !movieTitle || typeof movieTitle !== 'string' || movieTitle.length > 200) {
+      return res.status(422).json({ error: 'movieId e movieTitle são obrigatórios.' });
+    }
+    const activity = await Activity.create({ actorId: req.userId, type, movieId: String(movieId), movieTitle, note: String(note).slice(0, 500) });
+    res.status(201).json({ activity });
+  } catch (error) { next(error); }
+});
+
+// ============================================================
 // CONVERSAS
 // ============================================================
 
@@ -418,6 +509,7 @@ app.get(
 
 app.post(
   '/api/recommendations',
+  requireAuth,
   async (req, res, next) => {
     try {
       const {

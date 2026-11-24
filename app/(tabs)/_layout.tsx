@@ -1,4 +1,5 @@
 import { TabBar } from '@/components/navigation/TabBar';
+import { NativeUnlockGate } from '@/components/auth/NativeUnlockGate';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@clerk/clerk-expo';
 import { Tabs, useRouter } from 'expo-router';
@@ -24,7 +25,8 @@ export default function TabLayout() {
   }
 
   return (
-    <Tabs
+    <NativeUnlockGate>
+      <Tabs
       detachInactiveScreens={false}
       tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
@@ -66,6 +68,7 @@ export default function TabLayout() {
           title: 'Perfil',
         }}
       />
-    </Tabs>
+      </Tabs>
+    </NativeUnlockGate>
   );
 }

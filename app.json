@@ -40,7 +40,15 @@
           "backgroundColor": "#0A0A0A"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#E50914"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

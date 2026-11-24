@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@/hooks/useAuth";
 import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Send, Trash2 } from "lucide-react-native";
@@ -25,7 +25,10 @@ import {
   clearRemoteConversation,
   loadRemoteConversation,
   saveRemoteConversation,
+  setApiTokenGetter,
 } from "@/services/backend";
+import { flushConversationQueue, pendingConversationCount } from "@/services/offlineQueue";
+import { notifyRecommendationReady } from "@/services/notifications";
 import {
   getMovieRecommendations,
   GeminiRecommendationResult,
@@ -75,7 +78,7 @@ function getChatStorageKey(userId: string) {
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userId, isLoaded } = useAuth();
+  const { userId, isLoaded, getToken } = useAuth();
 
   const textColor = useColor("text");
   const mutedColor = useColor("textMuted");
@@ -91,9 +94,15 @@ export default function ChatScreen() {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [hasHydratedCache, setHasHydratedCache] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [syncState, setSyncState] = useState<"synced" | "pending" | "offline">("synced");
 
   const flatListRef = useRef<FlatList>(null);
   const recCtxRef = useRef<RecommendationContext>(createEmptyContext());
+  const notifiedMessageRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setApiTokenGetter(getToken);
+  }, [getToken]);
 
   const storageKey = userId ? getChatStorageKey(userId) : null;
   const composerBottom =
@@ -127,6 +136,11 @@ export default function ChatScreen() {
   // ---- Scroll ----
   useEffect(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
+    const last = messages[messages.length - 1];
+    if (last && !last.isUser && last.movies?.length && last.id !== notifiedMessageRef.current) {
+      notifiedMessageRef.current = last.id;
+      void notifyRecommendationReady(last.movies.length);
+    }
   }, [messages]);
 
   // ---- Hydrate messages + context from cache ----
@@ -144,6 +158,12 @@ export default function ChatScreen() {
 
     const hydrate = async () => {
       try {
+        const pendingBefore = await pendingConversationCount(userId);
+        if (pendingBefore > 0) setSyncState("pending");
+        const flushed = await flushConversationQueue(userId, async (id, queued) =>
+          saveRemoteConversation(id, queued),
+        );
+        setSyncState(flushed.remaining > 0 ? "pending" : "synced");
         const [cached, remoteMessages, savedCtx] = await Promise.all([
           AsyncStorage.getItem(storageKey),
           loadRemoteConversation(userId),
@@ -181,7 +201,12 @@ export default function ChatScreen() {
     if (!isLoaded || !storageKey || !hasHydratedCache) return;
     if (messages.length <= 1) return;
     AsyncStorage.setItem(storageKey, JSON.stringify(messages)).catch(() => {});
-    if (userId) void saveRemoteConversation(userId, messages);
+    if (userId) {
+      setSyncState("pending");
+      void saveRemoteConversation(userId, messages).then((saved) => {
+        setSyncState(saved ? "synced" : "offline");
+      });
+    }
   }, [isLoaded, storageKey, hasHydratedCache, messages, userId]);
 
   // ---- Persist context helper ----
@@ -378,6 +403,13 @@ export default function ChatScreen() {
           <Text variant="title" style={styles.headerTitle}>
             Chat
           </Text>
+          <Text
+            accessibilityRole="text"
+            accessibilityLabel={`Estado da sincronização: ${syncState === "synced" ? "sincronizado" : syncState === "pending" ? "pendente" : "offline"}`}
+            style={[styles.syncLabel, { color: syncState === "synced" ? "#22C55E" : "#F59E0B" }]}
+          >
+            {syncState === "synced" ? "Sincronizado" : syncState === "pending" ? "Sincronizando…" : "Offline"}
+          </Text>
         </View>
 
         <TouchableOpacity
@@ -502,6 +534,11 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: "800",
     letterSpacing: -0.3,
+  },
+  syncLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    marginLeft: 4,
   },
   iconButton: {
     width: 34,
