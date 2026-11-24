@@ -9,7 +9,6 @@ export function setApiTokenGetter(getter: () => Promise<string | null>) {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL não configurada');
   const token = tokenGetter ? await tokenGetter() : null;
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
@@ -34,7 +33,6 @@ export interface RemoteMessage {
 }
 
 export async function loadRemoteConversation(userId: string): Promise<RemoteMessage[] | null> {
-  if (!API_URL) return null;
   try {
     const result = await request<{ messages: RemoteMessage[] }>(`/api/conversations/${encodeURIComponent(userId)}`);
     return result.messages;
@@ -42,10 +40,6 @@ export async function loadRemoteConversation(userId: string): Promise<RemoteMess
 }
 
 export async function saveRemoteConversation(userId: string, messages: RemoteMessage[]): Promise<boolean> {
-  if (!API_URL) {
-    await enqueueConversation(userId, messages);
-    return false;
-  }
   try {
     await request(`/api/conversations/${encodeURIComponent(userId)}`, {
       method: 'PUT',
@@ -59,7 +53,6 @@ export async function saveRemoteConversation(userId: string, messages: RemoteMes
 }
 
 export async function clearRemoteConversation(userId: string): Promise<void> {
-  if (!API_URL) return;
   try {
     await request(`/api/conversations/${encodeURIComponent(userId)}`, { method: 'DELETE' });
   } catch { /* no-op */ }
@@ -73,7 +66,6 @@ export interface UserProfile {
 }
 
 export async function loadMyProfile(): Promise<UserProfile | null> {
-  if (!API_URL) return null;
   try { return (await request<{ profile: UserProfile }>('/api/profile/me')).profile; } catch { return null; }
 }
 

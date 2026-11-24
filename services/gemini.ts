@@ -2,6 +2,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { searchMovies, Movie } from './api';
 import type { RecommendationContext } from './chatContext';
 import { getBackendRecommendations } from './backend';
+import { Platform } from 'react-native';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -111,7 +112,7 @@ export async function getMovieRecommendations(
   quantity: number = 3,
   ctx?: RecommendationContext | null,
 ): Promise<GeminiRecommendationResult> {
-  if (process.env.EXPO_PUBLIC_API_URL) {
+  if (process.env.EXPO_PUBLIC_API_URL || Platform.OS === 'web') {
     try {
       return await getBackendRecommendations(userMessage, quantity, ctx);
     } catch (error) {
